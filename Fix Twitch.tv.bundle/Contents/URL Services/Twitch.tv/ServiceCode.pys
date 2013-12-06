@@ -1,0 +1,70 @@
+import urllib
+
+CLIP_DATA = 'http://api.justin.tv/api/clip/show/%s.json'
+STREAM_DATA = 'http://api.justin.tv/api/stream/list.json?channel=%s'
+
+HLS_TOKEN_URL = 'http://api.twitch.tv/api/channels/%s/access_token'
+HLS_PLAYLIST_URL = 'http://usher.twitch.tv/api/channel/hls/%s.m3u8?token=%s&sig=%s'
+
+####################################################################################################
+def NormalizeURL(url):
+
+	return url.split('?')[0].split('#')[0].rstrip('/')
+
+####################################################################################################
+def MetadataObjectForURL(url):
+
+	user_id = GetUserId(url)
+	video = JSON.ObjectFromURL(STREAM_DATA % user_id, cacheTime=0)
+
+	if len(video) < 1:
+		raise Ex.LiveMediaNotStarted
+	else:
+		video = video[0]
+
+	thumbs = []
+	for size in ['screen_cap_url_large', 'screen_cap_url_medium']:
+		if size in video['channel']:
+			thumbs.append(video['channel'][size])
+
+	return VideoClipObject(
+		title = video['channel']['title'],
+		thumb = Resource.ContentsOfURLWithFallback(thumbs)
+	)
+
+####################################################################################################
+def MediaObjectsForURL(url):
+
+	return [
+		MediaObject(
+			protocol = 'hls',
+			container = 'mpegts',
+			video_codec = VideoCodec.H264,
+			video_resolution = '480',
+			audio_codec = AudioCodec.AAC,
+			audio_channels = 2,
+			optimized_for_streaming = True,
+			parts = [
+				PartObject(
+					key = Callback(PlayVideo, url=url, ext='m3u8')
+				)
+			]
+		)
+	]
+
+####################################################################################################
+@indirect
+def PlayVideo(url):
+
+	user_id = GetUserId(url)
+	token = JSON.ObjectFromURL(HLS_TOKEN_URL % user_id, cacheTime=0)
+	video_url = HLS_PLAYLIST_URL % (user_id, urllib.quote(token['token']), urllib.quote(token['sig']))
+	Log(' --> Final video_url: %s' % video_url)
+
+	return IndirectResponse(VideoClipObject, key=HTTPLiveStreamURL(video_url))
+
+
+####################################################################################################
+def GetUserId(url):
+
+	return url.split('/')[-1]
